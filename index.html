@@ -641,7 +641,7 @@ function openProductModal(product){
         <span>🔒 세트 고정가 <small style="color:var(--text-light)">(N개=1세트, 세트 수만큼 가격·마진·인센 계산)</small></span>
       </label>
     </div>
-    <div id="setQtyFieldWrap" style="${p.fixedSetPrice?'':'display:none'}margin-top:4px;padding:12px 14px;background:#fef9ec;border:1px solid #f59e0b;border-radius:10px">
+    <div id="setQtyFieldWrap" style="display:${p.fixedSetPrice?'block':'none'};margin-top:4px;padding:12px 14px;background:#fef9ec;border:1px solid #f59e0b;border-radius:10px">
       <div class="form-group" style="margin-bottom:0">
         <label style="font-size:13px">🔢 1세트 구성 수량 <small style="color:var(--text-light)">(예: 3 → 3개 담으면 1세트 / 6개 담으면 2세트)</small></label>
         <input type="number" id="pmSetQty" value="${p.setQty||1}" min="1" max="99" style="width:120px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin-top:4px">
@@ -679,7 +679,7 @@ function saveProduct(existingId){
 function toggleSetQtyField(){
   const checked=document.getElementById('pmFixedSetPrice')?.checked;
   const wrap=document.getElementById('setQtyFieldWrap');
-  if(wrap)wrap.style.display=checked?'':'none';
+  if(wrap) wrap.style.display=checked?'block':'none';
 }
 function editProduct(id){const p=STATE.products.find(p=>p.id===id);if(p)openProductModal(p)}
 function deleteProduct(id){if(!confirm('삭제?'))return;STATE.products=STATE.products.filter(p=>p.id!==id);saveProducts();renderProductTable();toast('삭제됨')}
