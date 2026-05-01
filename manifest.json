@@ -1,0 +1,1 @@
+{"name":"도메몰 주문관리 시스템","short_name":"주문관리","description":"내부 주문관리 시스템","start_url":"./index.html","display":"standalone","orientation":"portrait","background_color":"#f1f5f9","theme_color":"#1e293b","icons":[{"src":"icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},{"src":"icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]}
