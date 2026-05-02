@@ -220,7 +220,7 @@ const firebaseConfig={apiKey:"AIzaSyANEYy841xEVcfZKRljh4qHUKbd6Uc_M8c",authDomai
 firebase.initializeApp(firebaseConfig);
 const db=firebase.database();
 let OCR_API_KEY='helloworld';
-let GEMINI_API_KEY=''; // https://aistudio.google.com/apikey 에서 발급
+let GEMINI_API_KEY='';
 
 const DEFAULT_PRODUCTS=[
   {id:'p1',name:'옷걸이',category:'잡화',price:15000,margin:2500,incentive:0,code:'9531330',image:'',options:['00 화이트','01 그레이'],best:false,soldOut:false,fixedSetPrice:false,setQty:1,note:''},
@@ -254,7 +254,7 @@ const DEFAULT_STAFF=[{id:'s1',name:'직원1',password:'1234'},{id:'s2',name:'직
 let STATE={products:[],orders:[],staff:[],adminPassword:'admin',notice:'',approvals:[],recipients:[],incentiveAdjustments:[]};
 let currentUser=null,currentMode=null,cart=[],currentPage='dashboard';
 
-async function loadState(){const snap=await db.ref('state').once('value');const data=snap.val();if(data){STATE={...STATE,...data};if(!STATE.approvals)STATE.approvals=[];if(!STATE.recipients)STATE.recipients=[];if(!STATE.incentiveAdjustments)STATE.incentiveAdjustments=[];STATE.products=(STATE.products||[]).map(p=>({incentive:0,fixedSetPrice:false,setQty:1,...p}));}else{STATE.products=DEFAULT_PRODUCTS;STATE.staff=DEFAULT_STAFF;await saveState();}}
+async function loadState(){const snap=await db.ref('state').once('value');const data=snap.val();if(data){STATE={...STATE,...data};if(!STATE.approvals)STATE.approvals=[];if(!STATE.recipients)STATE.recipients=[];if(!STATE.incentiveAdjustments)STATE.incentiveAdjustments=[];STATE.products=(STATE.products||[]).map(p=>({incentive:0,fixedSetPrice:false,setQty:1,...p}));if(data.geminiApiKey)GEMINI_API_KEY=data.geminiApiKey;}else{STATE.products=DEFAULT_PRODUCTS;STATE.staff=DEFAULT_STAFF;await saveState();}}
 function saveState(){return db.ref('state').set(STATE)}
 function saveOrders(){return db.ref('state/orders').set(STATE.orders||[])}
 function saveProducts(){return db.ref('state/products').set(STATE.products||[])}
@@ -367,7 +367,7 @@ function renderStaffMgmt(c){
   c.innerHTML=`<div class="card"><h2>직원 관리</h2><button class="btn btn-primary btn-sm" onclick="addStaff()" style="margin-bottom:12px">+ 직원 추가</button>${STATE.staff.map(s=>`<div class="order-card"><div class="order-header"><span class="order-product">${s.name}</span></div><div style="display:flex;gap:8px;margin-top:8px"><input id="pw_${s.id}" placeholder="새 비밀번호" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:8px"><button class="btn btn-primary btn-sm" onclick="changeStaffPw('${s.id}')">변경</button><button class="btn btn-danger btn-sm" onclick="removeStaff('${s.id}')">삭제</button></div></div>`).join('')}</div><div class="card"><h2>관리자 비밀번호</h2><div style="display:flex;gap:8px"><input type="password" id="newAdminPw" placeholder="새 비밀번호" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px"><button class="btn btn-primary btn-sm" onclick="changeAdminPw()">변경</button></div></div><div class="card"><h2>🤖 AI 설정 (Gemini)</h2><p style="font-size:12px;color:var(--text-light);margin-bottom:8px">https://aistudio.google.com/apikey 에서 무료 발급</p><div style="display:flex;gap:8px"><input id="geminiKeyInput" value="${GEMINI_API_KEY}" placeholder="Gemini API Key 입력" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:13px"><button class="btn btn-primary btn-sm" onclick="saveGeminiKey()">저장</button></div></div><div class="card"><h2>OCR API 키 (백업용)</h2><p style="font-size:12px;color:var(--text-light);margin-bottom:8px">Gemini 실패 시 사용. https://ocr.space/ocrapi/freekey</p><div style="display:flex;gap:8px"><input id="ocrKeyInput" value="${OCR_API_KEY}" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:13px"><button class="btn btn-primary btn-sm" onclick="saveOCRKey()">저장</button></div></div><div class="card"><h2>💜 인센티브 관리</h2><div class="filter-bar"><select id="incMonth" onchange="renderIncentiveSection()">${months.map(m=>`<option value="${m}">${m.replace('-','년 ')}월</option>`).join('')}</select></div><div id="incentiveSection"></div></div>`;
   renderIncentiveSection();
 }
-function saveGeminiKey(){GEMINI_API_KEY=document.getElementById('geminiKeyInput').value.trim();localStorage.setItem('gemini_api_key',GEMINI_API_KEY);toast('Gemini API 키 저장됨');}
+function saveGeminiKey(){GEMINI_API_KEY=document.getElementById('geminiKeyInput').value.trim();localStorage.setItem('gemini_api_key',GEMINI_API_KEY);db.ref('state/geminiApiKey').set(GEMINI_API_KEY);toast('Gemini API 키 저장됨');}
 function renderIncentiveSection(){const month=document.getElementById('incMonth')?.value||new Date().toISOString().slice(0,7);const section=document.getElementById('incentiveSection');if(!section)return;let html='';STATE.staff.forEach(s=>{const staffOrders=STATE.orders.filter(o=>o.staffId===s.id&&o.date&&o.date.startsWith(month)&&o.status!=='취소');const orderInc=staffOrders.reduce((sum,o)=>sum+(o.incentiveTotal||0),0);const orderMargin=staffOrders.reduce((sum,o)=>sum+o.totalMargin,0);const adjustments=(STATE.incentiveAdjustments||[]).filter(a=>a.staffId===s.id&&a.month===month);const adjustTotal=adjustments.reduce((sum,a)=>sum+a.amount,0);html+=`<div class="incentive-card"><div class="inc-header"><span class="inc-name">${s.name}</span><span class="inc-total">${formatNum(orderMargin+orderInc+adjustTotal)}원</span></div><div class="inc-detail">순수마진:${formatNum(orderMargin)} · 주문인센:${formatNum(orderInc)}${adjustTotal?` · 조정:${adjustTotal>0?'+':''}${formatNum(adjustTotal)}`:''}</div><div class="inc-adjust"><select id="incType_${s.id}"><option value="add">추가(+)</option><option value="sub">차감(-)</option></select><input type="number" id="incAmount_${s.id}" placeholder="금액" min="0"><input type="text" id="incReason_${s.id}" placeholder="사유" style="width:140px"><button class="btn btn-sm btn-primary" onclick="addIncentiveAdjust('${s.id}','${month}')">적용</button></div>${adjustments.length?`<div class="incentive-log">${adjustments.map(a=>`<div>${a.date?formatDate(a.date):''} · ${a.amount>0?'+':''}${formatNum(a.amount)}원${a.reason?' ('+a.reason+')':''} <button onclick="removeIncentiveAdjust('${a.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:11px">삭제</button></div>`).join('')}</div>`:''}</div>`;});section.innerHTML=html||'<p style="color:var(--text-light);text-align:center">직원 없음</p>';}
 function addIncentiveAdjust(staffId,month){const type=document.getElementById(`incType_${staffId}`).value;const raw=Number(document.getElementById(`incAmount_${staffId}`).value);const reason=document.getElementById(`incReason_${staffId}`).value.trim();if(!raw||raw<=0){toast('금액 입력','error');return;}const amount=type==='add'?raw:-raw;if(!STATE.incentiveAdjustments)STATE.incentiveAdjustments=[];STATE.incentiveAdjustments.push({id:generateId(),staffId,month,amount,reason,date:new Date().toISOString()});saveIncentiveAdjustments();document.getElementById(`incAmount_${staffId}`).value='';document.getElementById(`incReason_${staffId}`).value='';renderIncentiveSection();toast('적용됨');}
 function removeIncentiveAdjust(adjId){if(!confirm('삭제?'))return;STATE.incentiveAdjustments=(STATE.incentiveAdjustments||[]).filter(a=>a.id!==adjId);saveIncentiveAdjustments();renderIncentiveSection();toast('삭제됨');}
@@ -443,9 +443,9 @@ async function processOCRImage(file){
 function parseTextInput(){const text=document.getElementById('ocrTextInput')?.value?.trim();if(!text){toast('텍스트 입력','error');return;}const blocks=text.split(/\n{2,}/);let cnt=0;blocks.forEach(block=>{if(block.trim().length<3)return;const parsed=parseOrderInfoLocal(block.trim());ocrEntries.push({rawText:block.trim(),...parsed});cnt++;});document.getElementById('ocrTextInput').value='';renderOCRList();toast(`${cnt}건 파싱`);}
 function fileToBase64(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});}
 
-/* ===== Gemini Vision API로 이미지에서 배송정보 직접 추출 ===== */
+/* ===== Gemini Vision API ===== */
 async function callGeminiVision(base64Data){
-  if(!GEMINI_API_KEY){throw new Error('Gemini API 키를 설정해주세요 (직원관리 > AI 설정)');}
+  if(!GEMINI_API_KEY){throw new Error('Gemini API 키를 설정해주세요 (관리자 > 직원관리 > AI 설정)');}
   const imageData=base64Data.replace(/^data:image\/(png|jpeg|jpg|webp|gif);base64,/,'');
   const mimeMatch=base64Data.match(/^data:(image\/[^;]+);base64,/);
   const mimeType=mimeMatch?mimeMatch[1]:'image/png';
@@ -490,30 +490,18 @@ async function callGeminiVision(base64Data){
   const data=await response.json();
   const text=data.candidates?.[0]?.content?.parts?.[0]?.text||'';
 
-  // JSON 추출
   const jsonMatch=text.match(/\{[\s\S]*?\}/);
   if(jsonMatch){
     try{
       const parsed=JSON.parse(jsonMatch[0]);
-      // 전화번호 포맷팅
-      if(parsed.phone){
-        parsed.phone=formatPhoneNumber(parsed.phone.replace(/[-.\s]/g,''));
-      }
-      return{
-        name:parsed.name||'',
-        phone:parsed.phone||'',
-        address:parsed.address||'',
-        addressDetail:parsed.addressDetail||'',
-        zipcode:parsed.zipcode||''
-      };
-    }catch(e){
-      throw new Error('AI 응답 파싱 실패');
-    }
+      if(parsed.phone){parsed.phone=formatPhoneNumber(parsed.phone.replace(/[-.\s]/g,''));}
+      return{name:parsed.name||'',phone:parsed.phone||'',address:parsed.address||'',addressDetail:parsed.addressDetail||'',zipcode:parsed.zipcode||''};
+    }catch(e){throw new Error('AI 응답 파싱 실패');}
   }
   throw new Error('AI가 정보를 추출하지 못했습니다');
 }
 
-/* 텍스트 직접 입력용 로컬 파싱 (기존 정규식 방식 유지) */
+/* 텍스트 직접 입력용 로컬 파싱 */
 function parseOrderInfoLocal(text){
   const rawLines=text.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
   let name='',phone='',address='',addressDetail='',zipcode='';
@@ -554,8 +542,10 @@ if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch
 async function init(){
   const savedKey=localStorage.getItem('ocr_api_key');if(savedKey)OCR_API_KEY=savedKey;
   const savedGemini=localStorage.getItem('gemini_api_key');if(savedGemini)GEMINI_API_KEY=savedGemini;
-  await loadState();populateStaffSelect();handleModeChange();tryAutoLogin();
-  db.ref('state').on('value',snap=>{const data=snap.val();if(data){STATE={...STATE,...data};if(!STATE.approvals)STATE.approvals=[];if(!STATE.recipients)STATE.recipients=[];if(!STATE.incentiveAdjustments)STATE.incentiveAdjustments=[];STATE.products=(STATE.products||[]).map(p=>({incentive:0,fixedSetPrice:false,setQty:1,...p}));updateApprovalCount();}});
+  await loadState();
+  const geminiSnap=await db.ref('state/geminiApiKey').once('value');if(geminiSnap.val()){GEMINI_API_KEY=geminiSnap.val();localStorage.setItem('gemini_api_key',GEMINI_API_KEY);}
+  populateStaffSelect();handleModeChange();tryAutoLogin();
+  db.ref('state').on('value',snap=>{const data=snap.val();if(data){STATE={...STATE,...data};if(!STATE.approvals)STATE.approvals=[];if(!STATE.recipients)STATE.recipients=[];if(!STATE.incentiveAdjustments)STATE.incentiveAdjustments=[];STATE.products=(STATE.products||[]).map(p=>({incentive:0,fixedSetPrice:false,setQty:1,...p}));if(data.geminiApiKey)GEMINI_API_KEY=data.geminiApiKey;updateApprovalCount();}});
 }
 init();
 </script>
