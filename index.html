@@ -1338,7 +1338,7 @@ function renderMySalesContent(){
   const totSales=myOrders.reduce((s,o)=>s+o.totalPrice,0);
   const totMargin=myOrders.reduce((s,o)=>s+o.totalMargin,0);
   const orderIncentive=myOrders.reduce((s,o)=>s+(o.incentiveTotal||0),0);
-  // 관리자 수동 조정 내역 (읽기전용)
+  // 관리자 수동 조정 내역 (읽기전용 - 직원은 보기만 가능)
   const adjustments=(STATE.incentiveAdjustments||[]).filter(a=>a.staffId===currentUser.id&&a.month===month);
   const adjustTotal=adjustments.reduce((sum,a)=>sum+a.amount,0);
   const totInc=orderIncentive+adjustTotal;
