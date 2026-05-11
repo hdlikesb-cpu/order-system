@@ -147,6 +147,16 @@ tr:hover{background:#f8fafc}
 .ocr-field input{flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;min-width:0}
 .ocr-field .btn{white-space:nowrap}
 .ocr-raw-text{background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:12px;color:var(--text-light);max-height:80px;overflow-y:auto;margin-bottom:8px;white-space:pre-wrap;word-break:break-all}
+.period-tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.period-tab{padding:8px 14px;border:1.5px solid var(--border);border-radius:10px;background:#fff;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-light);transition:all .15s}
+.period-tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.settle-card{background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border:1px solid #86efac;border-radius:12px;padding:14px;margin-bottom:10px}
+.settle-card.paid{background:linear-gradient(135deg,#f3f4f6,#f9fafb);border-color:#d1d5db;opacity:.85}
+.settle-card .s-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap}
+.settle-card .s-title{font-weight:700;font-size:14px}
+.settle-card .s-amount{font-size:18px;font-weight:800;color:var(--success)}
+.settle-card.paid .s-amount{color:var(--text-light)}
+.settle-card .s-detail{font-size:12px;color:var(--text-light);line-height:1.7}
 @media(min-width:769px){
   .bottom-nav{display:none!important}
   .nav-links-desktop{display:flex!important}
@@ -251,26 +261,36 @@ const DEFAULT_PRODUCTS=[
   {id:'p26',name:'스탬퍼',category:'잡화',price:9900,margin:1500,incentive:0,code:'8385145',image:'',options:['00 스탬퍼'],best:false,soldOut:false,fixedSetPrice:false,setQty:1,note:''}
 ];
 const DEFAULT_STAFF=[{id:'s1',name:'직원1',password:'1234'},{id:'s2',name:'직원2',password:'1234'},{id:'s3',name:'직원3',password:'1234'}];
-let STATE={products:[],orders:[],staff:[],adminPassword:'admin',notice:'',approvals:[],recipients:[],incentiveAdjustments:[]};
+let STATE={products:[],orders:[],staff:[],adminPassword:'admin',notice:'',approvals:[],recipients:[],incentiveAdjustments:[],settlements:[]};
 let currentUser=null,currentMode=null,cart=[],currentPage='dashboard';
 
-async function loadState(){const snap=await db.ref('state').once('value');const data=snap.val();if(data){STATE={...STATE,...data};if(!STATE.approvals)STATE.approvals=[];if(!STATE.recipients)STATE.recipients=[];if(!STATE.incentiveAdjustments)STATE.incentiveAdjustments=[];STATE.products=(STATE.products||[]).map(p=>({incentive:0,fixedSetPrice:false,setQty:1,...p}));if(data.geminiApiKey)GEMINI_API_KEY=data.geminiApiKey;}else{STATE.products=DEFAULT_PRODUCTS;STATE.staff=DEFAULT_STAFF;await saveState();}}
+async function loadState(){const snap=await db.ref('state').once('value');const data=snap.val();if(data){STATE={...STATE,...data};if(!STATE.approvals)STATE.approvals=[];if(!STATE.recipients)STATE.recipients=[];if(!STATE.incentiveAdjustments)STATE.incentiveAdjustments=[];if(!STATE.settlements)STATE.settlements=[];STATE.products=(STATE.products||[]).map(p=>({incentive:0,fixedSetPrice:false,setQty:1,...p}));if(data.geminiApiKey)GEMINI_API_KEY=data.geminiApiKey;}else{STATE.products=DEFAULT_PRODUCTS;STATE.staff=DEFAULT_STAFF;await saveState();}}
 function saveState(){return db.ref('state').set(STATE)}
 function saveOrders(){return db.ref('state/orders').set(STATE.orders||[])}
 function saveProducts(){return db.ref('state/products').set(STATE.products||[])}
 function saveStaff(){return db.ref('state/staff').set(STATE.staff||[])}
 function saveApprovals(){return db.ref('state/approvals').set(STATE.approvals||[])}
 function saveIncentiveAdjustments(){return db.ref('state/incentiveAdjustments').set(STATE.incentiveAdjustments||[])}
+function saveSettlements(){return db.ref('state/settlements').set(STATE.settlements||[])}
 
 function toast(msg,type='success'){const el=document.createElement('div');el.className=`toast ${type}`;el.textContent=msg;document.getElementById('toastContainer').appendChild(el);setTimeout(()=>el.remove(),3000)}
 function formatNum(n){return Number(n||0).toLocaleString()}
 function formatDate(d){return new Date(d).toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
+function formatDateOnly(d){return new Date(d).toLocaleDateString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit'})}
 function generateId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
 function parseOption(s){if(!s)return{code:'',name:''};const i=s.indexOf(' ');if(i===-1)return{code:s,name:''};return{code:s.substring(0,i),name:s.substring(i+1)}}
 function saveSession(){localStorage.setItem('session',JSON.stringify({mode:currentMode,userId:currentUser.id}))}
 function clearSession(){localStorage.removeItem('session')}
 function formatPhoneNumber(value){const n=value.replace(/[^0-9]/g,'');if(n.length<=3)return n;if(n.length<=7)return n.slice(0,3)+'-'+n.slice(3);if(n.length<=11)return n.slice(0,3)+'-'+n.slice(3,7)+'-'+n.slice(7);return n.slice(0,3)+'-'+n.slice(3,7)+'-'+n.slice(7,11);}
 function handlePhoneInput(el){const c=el.selectionStart;const b=el.value;el.value=formatPhoneNumber(el.value);el.selectionStart=el.selectionEnd=c+(el.value.length-b.length);}
+
+/* ===== 기간 필터 헬퍼 ===== */
+function todayStr(){return new Date().toISOString().slice(0,10)}
+function addDays(dateStr,days){const d=new Date(dateStr);d.setDate(d.getDate()+days);return d.toISOString().slice(0,10)}
+function getWeekRange(dateStr){const d=new Date(dateStr);const day=d.getDay();const monOffset=day===0?-6:1-day;const mon=new Date(d);mon.setDate(d.getDate()+monOffset);const sun=new Date(mon);sun.setDate(mon.getDate()+6);return{start:mon.toISOString().slice(0,10),end:sun.toISOString().slice(0,10)};}
+function getMonthRange(monthStr){const[y,m]=monthStr.split('-').map(Number);const start=`${y}-${String(m).padStart(2,'0')}-01`;const last=new Date(y,m,0).getDate();const end=`${y}-${String(m).padStart(2,'0')}-${String(last).padStart(2,'0')}`;return{start,end};}
+function ordersInRange(start,end,staffId){return STATE.orders.filter(o=>{if(!o.date)return false;if(o.status==='취소')return false;const d=o.date.slice(0,10);if(d<start||d>end)return false;if(staffId&&o.staffId!==staffId)return false;return true;});}
+function adjustmentsInRange(start,end,staffId){return (STATE.incentiveAdjustments||[]).filter(a=>{if(!a.date)return false;const d=a.date.slice(0,10);if(d<start||d>end)return false;if(staffId&&a.staffId!==staffId)return false;return true;});}
 
 function tryAutoLogin(){const s=JSON.parse(localStorage.getItem('session')||'null');if(!s)return false;if(s.mode==='admin'){currentMode='admin';currentUser={id:'admin',name:'관리자'};}else{const st=STATE.staff.find(x=>x.id===s.userId);if(!st){clearSession();return false;}currentMode='staff';currentUser=st;}showApp();return true;}
 function showApp(){document.getElementById('loginPage').classList.add('hidden');document.getElementById('mainApp').classList.remove('hidden');document.getElementById('userName').textContent=currentUser.name;document.getElementById('modeBadge').textContent=currentMode==='admin'?'관리자':'직원';buildNav();navigateTo(currentMode==='admin'?'dashboard':'products');}
@@ -302,7 +322,7 @@ function renderDashboard(c){
 function saveNotice(){STATE.notice=document.getElementById('noticeInput').value;db.ref('state/notice').set(STATE.notice);toast('공지사항 저장됨')}
 
 function renderOrders(c){
-  c.innerHTML=`<div class="card"><h2>주문 관리</h2><div class="filter-bar"><select id="filterStaff" onchange="filterOrders()"><option value="">전체 직원</option>${STATE.staff.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select><select id="filterStatus" onchange="filterOrders()"><option value="">전체 상태</option><option>미발주</option><option>발주완료</option><option>배송중</option><option>취소</option></select><input type="text" id="filterRecipient" placeholder="수령인" oninput="filterOrders()" style="flex:1;min-width:80px"></div><div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="exportDomegook()">📥 도매꾹 엑셀</button><button class="btn btn-primary btn-sm" onclick="exportAllOrders()">전체 엑셀</button><button class="btn btn-warning btn-sm" onclick="uploadInvoice()">송장 업로드</button></div><div id="ordersContent"></div></div>`;filterOrders();
+  c.innerHTML=`<div class="card"><h2>주문 관리</h2><div class="filter-bar"><select id="filterStaff" onchange="filterOrders()"><option value="">전체 직원</option>${STATE.staff.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select><select id="filterStatus" onchange="filterOrders()"><option value="">전체 상태</option><option>미발주</option><option>발주완료</option><option>배송중</option><option>취소</option></select><input type="text" id="filterRecipient" placeholder="수령인" oninput="filterOrders()" style="flex:1;min-width:80px"></div><div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="exportDomegook()">📥 도매꾹 엑셀</button><button class="btn btn-primary btn-sm" onclick="exportAllOrders()">전체 엑셀</button><button class="btn btn-warning btn-sm" onclick="uploadInvoice()">송장 업로드</button><button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="exportSalesSummary()">📊 매출전체</button><button class="btn btn-sm" style="background:#7c3aed;color:#fff" onclick="exportDetailRecords()">📋 상세기록</button></div><div id="ordersContent"></div></div>`;filterOrders();
 }
 function filterOrders(){
   const staff=document.getElementById('filterStaff')?.value||'';const status=document.getElementById('filterStatus')?.value||'';const recipient=document.getElementById('filterRecipient')?.value||'';
@@ -317,29 +337,218 @@ function adminCancelOrder(id){const o=STATE.orders.find(x=>x.id===id);if(!o||o.s
 function enterInvoice(id){const c=prompt('택배사 (1:롯데, 2:한진):','1');if(!c)return;const inv=prompt('송장번호:');if(!inv)return;const o=STATE.orders.find(x=>x.id===id);if(o){o.courier=c==='1'?'롯데택배':'한진택배';o.invoice=inv;o.status='배송중';saveOrders();filterOrders();toast('송장 등록')}}
 function exportDomegook(){const unordered=STATE.orders.filter(o=>o.status==='미발주');if(!unordered.length){toast('미발주 없음','warning');return;}const rows=[['마켓','상품번호','옵션코드','옵션명','수량','수령자명','우편번호','배송주소','배송 상세주소','휴대전화']];unordered.forEach(o=>{(o.items||[]).forEach(it=>{const op=parseOption(it.optionFull||'');rows.push(['도매꾹',o.productCode||'',op.code,op.name||it.optionFull,it.qty,o.recipient||'',o.zipcode||'',o.address||'',o.addressDetail||'',o.phone||'']);});if(!o.items||o.items.length===0){const op=parseOption(o.optionFull||'');rows.push(['도매꾹',o.productCode||'',op.code,op.name||o.optionFull,1,o.recipient||'',o.zipcode||'',o.address||'',o.addressDetail||'',o.phone||'']);}});const ws=XLSX.utils.aoa_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sheet1');XLSX.writeFile(wb,`도매꾹_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.xlsx`);unordered.forEach(o=>o.status='발주완료');saveOrders();filterOrders();toast(`${unordered.length}건 발주완료`);}
 function exportAllOrders(){const rows=[['주문일시','직원','상품명','구성','총금액','순수마진','인센티브','수령인','연락처','주소','상태','송장']];STATE.orders.forEach(o=>{const st=STATE.staff.find(s=>s.id===o.staffId);const comp=(o.items||[]).map(it=>`${parseOption(it.optionFull||'').name||it.optionFull}×${it.qty}`).join('/');rows.push([o.date,st?st.name:'',o.productName,comp,o.totalPrice,o.totalMargin,o.incentiveTotal||0,o.recipient,o.phone,(o.address||'')+' '+(o.addressDetail||''),o.status,o.invoice||'']);});const ws=XLSX.utils.aoa_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'전체주문');XLSX.writeFile(wb,`전체주문_${new Date().toISOString().slice(0,10)}.xlsx`);}
+
+/* ===== 📊 매출전체 다운로드 (요약+월별+직원별+정산 통합) ===== */
+function exportSalesSummary(){
+  const allOrders=STATE.orders.filter(o=>o.status!=='취소');
+  if(!allOrders.length){toast('주문 없음','warning');return;}
+  const wb=XLSX.utils.book_new();
+  // 1) 요약
+  const totSales=allOrders.reduce((s,o)=>s+o.totalPrice,0);
+  const totMargin=allOrders.reduce((s,o)=>s+o.totalMargin,0);
+  const totInc=allOrders.reduce((s,o)=>s+(o.incentiveTotal||0),0);
+  const totAdj=(STATE.incentiveAdjustments||[]).reduce((s,a)=>s+a.amount,0);
+  const summaryRows=[
+    ['📊 매출 요약 보고서'],
+    ['생성일시',new Date().toLocaleString('ko-KR')],
+    [],
+    ['항목','값'],
+    ['총 주문 건수',allOrders.length],
+    ['총 매출액',totSales],
+    ['총 순수마진',totMargin],
+    ['총 주문 인센티브',totInc],
+    ['총 인센 조정',totAdj],
+    ['총 정산 합계',totMargin+totInc+totAdj]
+  ];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(summaryRows),'요약');
+  // 2) 월별
+  const byMonth={};
+  allOrders.forEach(o=>{const m=o.date?o.date.slice(0,7):'미정';if(!byMonth[m])byMonth[m]={sales:0,margin:0,incentive:0,count:0};byMonth[m].sales+=o.totalPrice;byMonth[m].margin+=o.totalMargin;byMonth[m].incentive+=(o.incentiveTotal||0);byMonth[m].count++;});
+  const monthRows=[['월','주문수','매출','순수마진','인센티브','총마진']];
+  Object.keys(byMonth).sort().reverse().forEach(m=>{const d=byMonth[m];monthRows.push([m,d.count,d.sales,d.margin,d.incentive,d.margin+d.incentive]);});
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(monthRows),'월별');
+  // 3) 직원별
+  const byStaff={};
+  allOrders.forEach(o=>{if(!byStaff[o.staffId])byStaff[o.staffId]={sales:0,margin:0,incentive:0,count:0};byStaff[o.staffId].sales+=o.totalPrice;byStaff[o.staffId].margin+=o.totalMargin;byStaff[o.staffId].incentive+=(o.incentiveTotal||0);byStaff[o.staffId].count++;});
+  const adjByStaff={};(STATE.incentiveAdjustments||[]).forEach(a=>{if(!adjByStaff[a.staffId])adjByStaff[a.staffId]=0;adjByStaff[a.staffId]+=a.amount;});
+  const staffRows=[['직원','주문수','매출','순수마진','주문인센','조정','총마진']];
+  STATE.staff.forEach(s=>{const d=byStaff[s.id]||{sales:0,margin:0,incentive:0,count:0};const adj=adjByStaff[s.id]||0;staffRows.push([s.name,d.count,d.sales,d.margin,d.incentive,adj,d.margin+d.incentive+adj]);});
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(staffRows),'직원별');
+  // 4) 정산기록
+  const settleRows=[['정산일','기간','직원','주문수','매출','순수마진','인센','조정','지급액','상태','메모']];
+  (STATE.settlements||[]).slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).forEach(s=>{const st=STATE.staff.find(x=>x.id===s.staffId);settleRows.push([s.createdAt?s.createdAt.slice(0,10):'',`${s.start}~${s.end}`,st?st.name:'',s.orderCount,s.sales,s.margin,s.incentive,s.adjustment,s.totalAmount,s.paid?'지급완료':'대기',s.memo||'']);});
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(settleRows),'정산기록');
+  XLSX.writeFile(wb,`매출전체_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('매출 전체 다운로드 완료');
+}
+
+/* ===== 📋 상세기록 다운로드 (월별 거래 상세) ===== */
+function exportDetailRecords(){
+  const month=prompt('어느 월의 상세기록을 다운로드할까요? (YYYY-MM)\n비워두면 전체:',new Date().toISOString().slice(0,7));
+  if(month===null)return;
+  let orders=STATE.orders.filter(o=>o.status!=='취소');
+  if(month&&month.trim()){orders=orders.filter(o=>o.date&&o.date.startsWith(month.trim()));}
+  if(!orders.length){toast('해당 기간 주문 없음','warning');return;}
+  orders=orders.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const rows=[['주문일시','직원','상품명','상품코드','옵션','수량','단가','총금액','순수마진','인센티브','총마진','수령인','연락처','우편번호','주소','상세주소','배송메시지','상태','택배사','송장번호']];
+  orders.forEach(o=>{const st=STATE.staff.find(s=>s.id===o.staffId);const totalQty=(o.items||[]).reduce((s,it)=>s+it.qty,0);const opt=(o.items||[]).map(it=>`${parseOption(it.optionFull||'').name||it.optionFull}×${it.qty}`).join(' / ');rows.push([o.date?formatDate(o.date):'',st?st.name:'',o.productName,o.productCode||'',opt,totalQty,totalQty>0?Math.round(o.totalPrice/totalQty):0,o.totalPrice,o.totalMargin,o.incentiveTotal||0,o.totalMargin+(o.incentiveTotal||0),o.recipient||'',o.phone||'',o.zipcode||'',o.address||'',o.addressDetail||'',o.message||'',o.status,o.courier||'',o.invoice||'']);});
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'상세기록');
+  const label=month&&month.trim()?month.trim():'전체';
+  XLSX.writeFile(wb,`상세기록_${label}.xlsx`);
+  toast(`${rows.length-1}건 다운로드`);
+}
+
 function uploadInvoice(){const input=document.createElement('input');input.type='file';input.accept='.xlsx,.xls';input.onchange=async(e)=>{const file=e.target.files[0];const data=await file.arrayBuffer();const wb=XLSX.read(data);const ws=wb.Sheets[wb.SheetNames[0]];const rows=XLSX.utils.sheet_to_json(ws,{header:1});let matched=0;rows.forEach(row=>{if(row.length<2)return;const recipient=String(row[0]||'').trim();const inv=String(row[1]||'').trim();const courier=String(row[2]||'').trim();if(!recipient||!inv)return;const o=STATE.orders.find(x=>x.recipient===recipient&&(x.status==='발주완료'||x.status==='미발주'));if(o){o.invoice=inv;o.courier=courier||'롯데택배';o.status='배송중';matched++;}});saveOrders();filterOrders();toast(`${matched}건 매칭`);};input.click();}
 
-/* 직원매출 + 인센티브 조정 */
+/* ===== 직원매출 (관리자) - 기간조회 + 주급정산 ===== */
+let _salesPeriod={mode:'month',start:'',end:'',monthVal:''};
 function renderStaffSales(c){
-  const months=[];for(let i=0;i<12;i++){const d=new Date();d.setMonth(d.getMonth()-i);months.push(d.toISOString().slice(0,7));}
-  c.innerHTML=`<div class="card"><h2>직원별 매출</h2><div class="filter-bar"><select id="salesMonth" onchange="renderStaffSalesTable();renderStaffSalesIncentive()">${months.map(m=>`<option value="${m}">${m}</option>`).join('')}</select><select id="salesStaff" onchange="renderStaffSalesTable()"><option value="">전체</option>${STATE.staff.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select><button class="btn btn-success btn-sm" onclick="downloadStaffReport()">엑셀</button></div><div id="staffSalesContent"></div></div><div class="card"><h2>💜 인센티브 조정</h2><div id="staffSalesIncentiveSection"></div></div>`;
-  renderStaffSalesTable();renderStaffSalesIncentive();
+  if(!_salesPeriod.monthVal)_salesPeriod.monthVal=new Date().toISOString().slice(0,7);
+  if(!_salesPeriod.start){const r=getMonthRange(_salesPeriod.monthVal);_salesPeriod.start=r.start;_salesPeriod.end=r.end;}
+  c.innerHTML=`
+    <div class="card">
+      <h2>📊 직원별 매출 조회</h2>
+      <div class="period-tabs">
+        <div class="period-tab ${_salesPeriod.mode==='day'?'active':''}" onclick="setSalesPeriod('day')">일별</div>
+        <div class="period-tab ${_salesPeriod.mode==='week'?'active':''}" onclick="setSalesPeriod('week')">주별</div>
+        <div class="period-tab ${_salesPeriod.mode==='month'?'active':''}" onclick="setSalesPeriod('month')">월별</div>
+        <div class="period-tab ${_salesPeriod.mode==='range'?'active':''}" onclick="setSalesPeriod('range')">기간선택</div>
+      </div>
+      <div id="salesPeriodControls"></div>
+      <div class="filter-bar" style="margin-top:8px">
+        <select id="salesStaff" onchange="renderStaffSalesTable()"><option value="">전체 직원</option>${STATE.staff.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select>
+        <button class="btn btn-success btn-sm" onclick="downloadStaffReport()">엑셀</button>
+      </div>
+      <div id="staffSalesContent"></div>
+    </div>
+    <div class="card">
+      <h2>💳 주급 정산</h2>
+      <p style="font-size:12px;color:var(--text-light);margin-bottom:10px">현재 선택한 기간 기준으로 직원별 정산 기록을 생성합니다.</p>
+      <div id="settlementCreator"></div>
+      <h3 style="font-size:14px;margin-top:18px;margin-bottom:10px">📑 정산 기록</h3>
+      <div id="settlementList"></div>
+    </div>
+    <div class="card">
+      <h2>💜 인센티브 조정</h2>
+      <div class="filter-bar"><select id="ssAdjMonth" onchange="renderStaffSalesIncentive()">${(()=>{const ms=[];for(let i=0;i<12;i++){const d=new Date();d.setMonth(d.getMonth()-i);ms.push(d.toISOString().slice(0,7));}return ms.map(m=>`<option value="${m}">${m}</option>`).join('');})()}</select></div>
+      <div id="staffSalesIncentiveSection"></div>
+    </div>`;
+  renderSalesPeriodControls();
+  renderStaffSalesTable();
+  renderSettlementCreator();
+  renderSettlementList();
+  renderStaffSalesIncentive();
 }
+function setSalesPeriod(mode){
+  _salesPeriod.mode=mode;
+  const today=todayStr();
+  if(mode==='day'){_salesPeriod.start=today;_salesPeriod.end=today;}
+  else if(mode==='week'){const r=getWeekRange(today);_salesPeriod.start=r.start;_salesPeriod.end=r.end;}
+  else if(mode==='month'){_salesPeriod.monthVal=new Date().toISOString().slice(0,7);const r=getMonthRange(_salesPeriod.monthVal);_salesPeriod.start=r.start;_salesPeriod.end=r.end;}
+  else if(mode==='range'){if(!_salesPeriod.start)_salesPeriod.start=addDays(today,-7);if(!_salesPeriod.end)_salesPeriod.end=today;}
+  renderSalesPeriodControls();renderStaffSalesTable();renderSettlementCreator();
+}
+function renderSalesPeriodControls(){
+  const el=document.getElementById('salesPeriodControls');if(!el)return;
+  const m=_salesPeriod.mode;
+  if(m==='day'){
+    el.innerHTML=`<div class="filter-bar"><input type="date" id="spDay" value="${_salesPeriod.start}" onchange="applyDay(this.value)"><button class="btn btn-outline btn-sm" onclick="shiftDay(-1)">← 어제</button><button class="btn btn-outline btn-sm" onclick="shiftDay(1)">내일 →</button><button class="btn btn-outline btn-sm" onclick="applyDay('${todayStr()}')">오늘</button></div>`;
+  }else if(m==='week'){
+    el.innerHTML=`<div class="filter-bar"><input type="date" id="spWeek" value="${_salesPeriod.start}" onchange="applyWeek(this.value)"><button class="btn btn-outline btn-sm" onclick="shiftWeek(-1)">← 지난주</button><button class="btn btn-outline btn-sm" onclick="shiftWeek(1)">다음주 →</button><button class="btn btn-outline btn-sm" onclick="applyWeek('${todayStr()}')">이번주</button><span style="font-size:12px;color:var(--text-light);align-self:center">${_salesPeriod.start} ~ ${_salesPeriod.end}</span></div>`;
+  }else if(m==='month'){
+    const ms=[];for(let i=0;i<12;i++){const d=new Date();d.setMonth(d.getMonth()-i);ms.push(d.toISOString().slice(0,7));}
+    el.innerHTML=`<div class="filter-bar"><select id="spMonth" onchange="applyMonth(this.value)">${ms.map(x=>`<option value="${x}" ${x===_salesPeriod.monthVal?'selected':''}>${x}</option>`).join('')}</select><span style="font-size:12px;color:var(--text-light);align-self:center">${_salesPeriod.start} ~ ${_salesPeriod.end}</span></div>`;
+  }else{
+    el.innerHTML=`<div class="filter-bar"><input type="date" id="spStart" value="${_salesPeriod.start}" onchange="_salesPeriod.start=this.value;renderStaffSalesTable();renderSettlementCreator()"> ~ <input type="date" id="spEnd" value="${_salesPeriod.end}" onchange="_salesPeriod.end=this.value;renderStaffSalesTable();renderSettlementCreator()"></div>`;
+  }
+}
+function applyDay(d){_salesPeriod.start=d;_salesPeriod.end=d;renderSalesPeriodControls();renderStaffSalesTable();renderSettlementCreator();}
+function shiftDay(diff){_salesPeriod.start=addDays(_salesPeriod.start,diff);_salesPeriod.end=_salesPeriod.start;renderSalesPeriodControls();renderStaffSalesTable();renderSettlementCreator();}
+function applyWeek(d){const r=getWeekRange(d);_salesPeriod.start=r.start;_salesPeriod.end=r.end;renderSalesPeriodControls();renderStaffSalesTable();renderSettlementCreator();}
+function shiftWeek(diff){_salesPeriod.start=addDays(_salesPeriod.start,diff*7);_salesPeriod.end=addDays(_salesPeriod.end,diff*7);renderSalesPeriodControls();renderStaffSalesTable();renderSettlementCreator();}
+function applyMonth(m){_salesPeriod.monthVal=m;const r=getMonthRange(m);_salesPeriod.start=r.start;_salesPeriod.end=r.end;renderSalesPeriodControls();renderStaffSalesTable();renderSettlementCreator();}
 function renderStaffSalesTable(){
-  const month=document.getElementById('salesMonth').value;const staffId=document.getElementById('salesStaff').value;
-  let orders=STATE.orders.filter(o=>o.date&&o.date.startsWith(month)&&o.status!=='취소');if(staffId)orders=orders.filter(o=>o.staffId===staffId);
-  const content=document.getElementById('staffSalesContent');let totSales=0,totMargin=0,totInc=0;const byStaff={};
+  const staffId=document.getElementById('salesStaff')?.value||'';
+  const orders=ordersInRange(_salesPeriod.start,_salesPeriod.end,staffId);
+  const content=document.getElementById('staffSalesContent');if(!content)return;
+  let totSales=0,totMargin=0,totInc=0;const byStaff={};
   orders.forEach(o=>{if(!byStaff[o.staffId])byStaff[o.staffId]={sales:0,margin:0,incentive:0,count:0};byStaff[o.staffId].sales+=o.totalPrice;byStaff[o.staffId].margin+=o.totalMargin;byStaff[o.staffId].incentive+=(o.incentiveTotal||0);byStaff[o.staffId].count++;totSales+=o.totalPrice;totMargin+=o.totalMargin;totInc+=(o.incentiveTotal||0);});
-  const adjByStaff={};(STATE.incentiveAdjustments||[]).filter(a=>a.month===month).forEach(a=>{if(!adjByStaff[a.staffId])adjByStaff[a.staffId]=0;adjByStaff[a.staffId]+=a.amount;});
-  let totAdj=Object.values(adjByStaff).reduce((s,v)=>s+v,0);
-  let html=`<div class="stats-grid" style="margin-bottom:14px"><div class="stat-card"><div class="stat-value">${orders.length}건</div><div class="stat-label">주문수</div></div><div class="stat-card"><div class="stat-value">${formatNum(totSales)}원</div><div class="stat-label">매출</div></div><div class="stat-card"><div class="stat-value" style="color:var(--success)">${formatNum(totMargin)}원</div><div class="stat-label">순수마진</div></div><div class="stat-card"><div class="stat-value" style="color:#7c3aed">${formatNum(totInc+totAdj)}원</div><div class="stat-label">인센티브</div></div></div>`;
+  const adjs=adjustmentsInRange(_salesPeriod.start,_salesPeriod.end,staffId);
+  const adjByStaff={};adjs.forEach(a=>{if(!adjByStaff[a.staffId])adjByStaff[a.staffId]=0;adjByStaff[a.staffId]+=a.amount;});
+  const totAdj=Object.values(adjByStaff).reduce((s,v)=>s+v,0);
+  let html=`<div style="font-size:13px;color:var(--text-light);margin-bottom:10px">📅 기간: <strong>${_salesPeriod.start} ~ ${_salesPeriod.end}</strong></div>`;
+  html+=`<div class="stats-grid"><div class="stat-card"><div class="stat-value">${orders.length}건</div><div class="stat-label">주문수</div></div><div class="stat-card"><div class="stat-value">${formatNum(totSales)}원</div><div class="stat-label">매출</div></div><div class="stat-card"><div class="stat-value" style="color:var(--success)">${formatNum(totMargin)}원</div><div class="stat-label">순수마진</div></div><div class="stat-card"><div class="stat-value" style="color:#7c3aed">${formatNum(totInc+totAdj)}원</div><div class="stat-label">인센티브</div></div></div>`;
   html+=`<div class="table-wrap"><table><thead><tr><th>직원</th><th>주문</th><th>매출</th><th>순수마진</th><th>인센</th><th>조정</th><th>총마진</th></tr></thead><tbody>`;
-  STATE.staff.forEach(s=>{const d=byStaff[s.id]||{sales:0,margin:0,incentive:0,count:0};const adj=adjByStaff[s.id]||0;html+=`<tr><td>${s.name}</td><td>${d.count}</td><td>${formatNum(d.sales)}</td><td>${formatNum(d.margin)}</td><td style="color:#7c3aed">${formatNum(d.incentive)}</td><td style="color:${adj>=0?'var(--success)':'var(--danger)'}">${adj>0?'+':''}${formatNum(adj)}</td><td style="font-weight:700;color:var(--success)">${formatNum(d.margin+d.incentive+adj)}</td></tr>`;});
+  const targetStaffList=staffId?STATE.staff.filter(s=>s.id===staffId):STATE.staff;
+  targetStaffList.forEach(s=>{const d=byStaff[s.id]||{sales:0,margin:0,incentive:0,count:0};const adj=adjByStaff[s.id]||0;html+=`<tr><td>${s.name}</td><td>${d.count}</td><td>${formatNum(d.sales)}</td><td>${formatNum(d.margin)}</td><td style="color:#7c3aed">${formatNum(d.incentive)}</td><td style="color:${adj>=0?'var(--success)':'var(--danger)'}">${adj>0?'+':''}${formatNum(adj)}</td><td style="font-weight:700;color:var(--success)">${formatNum(d.margin+d.incentive+adj)}</td></tr>`;});
   html+=`<tr style="font-weight:700;background:#f0f9ff"><td>합계</td><td>${orders.length}</td><td>${formatNum(totSales)}</td><td>${formatNum(totMargin)}</td><td style="color:#7c3aed">${formatNum(totInc)}</td><td>${formatNum(totAdj)}</td><td style="color:var(--success)">${formatNum(totMargin+totInc+totAdj)}</td></tr></tbody></table></div>`;
   content.innerHTML=html;
 }
+
+/* ===== 주급 정산 ===== */
+function renderSettlementCreator(){
+  const el=document.getElementById('settlementCreator');if(!el)return;
+  let html=`<div style="background:#f0f9ff;border:1px solid #93c5fd;border-radius:10px;padding:12px;margin-bottom:12px;font-size:13px">📅 정산 기간: <strong>${_salesPeriod.start} ~ ${_salesPeriod.end}</strong></div>`;
+  STATE.staff.forEach(s=>{
+    const orders=ordersInRange(_salesPeriod.start,_salesPeriod.end,s.id);
+    const sales=orders.reduce((sum,o)=>sum+o.totalPrice,0);
+    const margin=orders.reduce((sum,o)=>sum+o.totalMargin,0);
+    const inc=orders.reduce((sum,o)=>sum+(o.incentiveTotal||0),0);
+    const adjs=adjustmentsInRange(_salesPeriod.start,_salesPeriod.end,s.id);
+    const adj=adjs.reduce((sum,a)=>sum+a.amount,0);
+    const total=margin+inc+adj;
+    // 이미 정산된 주문 ID
+    const settledIds=new Set();(STATE.settlements||[]).forEach(st=>{if(st.staffId===s.id&&st.orderIds)st.orderIds.forEach(id=>settledIds.add(id));});
+    const newOrders=orders.filter(o=>!settledIds.has(o.id));
+    const newMargin=newOrders.reduce((sum,o)=>sum+o.totalMargin,0);
+    const newInc=newOrders.reduce((sum,o)=>sum+(o.incentiveTotal||0),0);
+    const newTotal=newMargin+newInc+adj;
+    html+=`<div class="settle-card"><div class="s-head"><div><div class="s-title">${s.name}</div><div class="s-detail">전체 ${orders.length}건 · 미정산 <strong>${newOrders.length}건</strong></div></div><div class="s-amount">${formatNum(newTotal)}원</div></div><div class="s-detail">매출 ${formatNum(sales)} · 마진 ${formatNum(margin)} · 인센 ${formatNum(inc)} · 조정 ${adj>=0?'+':''}${formatNum(adj)}</div><div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap"><input type="text" id="settleMemo_${s.id}" placeholder="메모 (선택)" style="flex:1;min-width:140px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px"><button class="btn btn-sm btn-success" onclick="startSettlement('${s.id}',false)" ${newOrders.length===0?'disabled':''}>정산 시작 (미정산)</button><button class="btn btn-sm btn-outline" onclick="startSettlement('${s.id}',true)" ${orders.length===0?'disabled':''}>전체 정산</button></div></div>`;
+  });
+  el.innerHTML=html;
+}
+function startSettlement(staffId,includeAll){
+  const orders=ordersInRange(_salesPeriod.start,_salesPeriod.end,staffId);
+  let targetOrders=orders;
+  if(!includeAll){const settledIds=new Set();(STATE.settlements||[]).forEach(st=>{if(st.staffId===staffId&&st.orderIds)st.orderIds.forEach(id=>settledIds.add(id));});targetOrders=orders.filter(o=>!settledIds.has(o.id));}
+  if(!targetOrders.length){toast('정산할 주문이 없습니다','warning');return;}
+  const adjs=adjustmentsInRange(_salesPeriod.start,_salesPeriod.end,staffId);
+  const sales=targetOrders.reduce((s,o)=>s+o.totalPrice,0);
+  const margin=targetOrders.reduce((s,o)=>s+o.totalMargin,0);
+  const inc=targetOrders.reduce((s,o)=>s+(o.incentiveTotal||0),0);
+  const adj=adjs.reduce((s,a)=>s+a.amount,0);
+  const total=margin+inc+adj;
+  const staff=STATE.staff.find(s=>s.id===staffId);
+  if(!confirm(`[${staff?.name}] 정산\n기간: ${_salesPeriod.start} ~ ${_salesPeriod.end}\n주문: ${targetOrders.length}건\n지급액: ${formatNum(total)}원\n\n정산하시겠습니까?`))return;
+  const memo=document.getElementById(`settleMemo_${staffId}`)?.value||'';
+  if(!STATE.settlements)STATE.settlements=[];
+  STATE.settlements.push({
+    id:generateId(),staffId,
+    start:_salesPeriod.start,end:_salesPeriod.end,
+    orderIds:targetOrders.map(o=>o.id),
+    orderCount:targetOrders.length,
+    sales,margin,incentive:inc,adjustment:adj,
+    totalAmount:total,
+    memo,paid:false,
+    createdAt:new Date().toISOString(),paidAt:null
+  });
+  saveSettlements();renderSettlementCreator();renderSettlementList();
+  toast(`✅ ${staff?.name} 정산 생성 (${formatNum(total)}원)`);
+}
+function renderSettlementList(){
+  const el=document.getElementById('settlementList');if(!el)return;
+  const list=(STATE.settlements||[]).slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  if(!list.length){el.innerHTML='<p style="text-align:center;color:var(--text-light);padding:14px">정산 기록 없음</p>';return;}
+  el.innerHTML=list.map(s=>{const staff=STATE.staff.find(x=>x.id===s.staffId);return`<div class="settle-card ${s.paid?'paid':''}"><div class="s-head"><div><div class="s-title">${staff?staff.name:'?'} <span style="font-size:11px;color:var(--text-light);font-weight:500">${s.paid?'✅ 지급완료':'⏳ 대기'}</span></div><div class="s-detail">${s.start} ~ ${s.end} · ${s.orderCount}건${s.memo?' · '+s.memo:''}</div></div><div class="s-amount">${formatNum(s.totalAmount)}원</div></div><div class="s-detail">매출 ${formatNum(s.sales)} · 마진 ${formatNum(s.margin)} · 인센 ${formatNum(s.incentive)} · 조정 ${s.adjustment>=0?'+':''}${formatNum(s.adjustment)}<br>생성: ${s.createdAt?formatDate(s.createdAt):''}${s.paidAt?` · 지급: ${formatDate(s.paidAt)}`:''}</div><div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">${!s.paid?`<button class="btn btn-sm btn-success" onclick="markSettlementPaid('${s.id}')">지급완료 표시</button>`:`<button class="btn btn-sm btn-outline" onclick="unmarkSettlementPaid('${s.id}')">지급취소</button>`}<button class="btn btn-sm btn-danger" onclick="deleteSettlement('${s.id}')">삭제</button></div></div>`;}).join('');
+}
+function markSettlementPaid(id){const s=(STATE.settlements||[]).find(x=>x.id===id);if(!s)return;s.paid=true;s.paidAt=new Date().toISOString();saveSettlements();renderSettlementList();toast('지급완료로 표시');}
+function unmarkSettlementPaid(id){const s=(STATE.settlements||[]).find(x=>x.id===id);if(!s)return;s.paid=false;s.paidAt=null;saveSettlements();renderSettlementList();toast('지급 취소');}
+function deleteSettlement(id){if(!confirm('정산 기록을 삭제하시겠습니까?\n(해당 주문들은 다시 미정산으로 돌아갑니다)'))return;STATE.settlements=(STATE.settlements||[]).filter(s=>s.id!==id);saveSettlements();renderSettlementCreator();renderSettlementList();toast('삭제됨');}
+
 function renderStaffSalesIncentive(){
-  const month=document.getElementById('salesMonth')?.value||new Date().toISOString().slice(0,7);
+  const month=document.getElementById('ssAdjMonth')?.value||new Date().toISOString().slice(0,7);
   const section=document.getElementById('staffSalesIncentiveSection');if(!section)return;let html='';
   STATE.staff.forEach(s=>{
     const staffOrders=STATE.orders.filter(o=>o.staffId===s.id&&o.date&&o.date.startsWith(month)&&o.status!=='취소');
@@ -348,9 +557,9 @@ function renderStaffSalesIncentive(){
     html+=`<div class="incentive-card"><div class="inc-header"><span class="inc-name">${s.name}</span><span class="inc-total">${formatNum(orderMargin+orderInc+adjustTotal)}원</span></div><div class="inc-detail">순수마진:${formatNum(orderMargin)} · 주문인센:${formatNum(orderInc)} (${staffOrders.length}건)${adjustTotal?` · 조정:${adjustTotal>0?'+':''}${formatNum(adjustTotal)}`:''}</div><div class="inc-adjust"><select id="ssIncType_${s.id}"><option value="add">추가(+)</option><option value="sub">차감(-)</option></select><input type="number" id="ssIncAmount_${s.id}" placeholder="금액" min="0"><input type="text" id="ssIncReason_${s.id}" placeholder="사유" style="width:140px"><button class="btn btn-sm btn-primary" onclick="addSSInc('${s.id}')">적용</button></div>${adjustments.length?`<div class="incentive-log">${adjustments.map(a=>`<div>${a.date?formatDate(a.date):''} · ${a.amount>0?'+':''}${formatNum(a.amount)}원${a.reason?' ('+a.reason+')':''} <button onclick="removeSSInc('${a.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:11px">삭제</button></div>`).join('')}</div>`:''}</div>`;
   });section.innerHTML=html||'<p style="color:var(--text-light);text-align:center">직원 없음</p>';
 }
-function addSSInc(staffId){const month=document.getElementById('salesMonth')?.value||new Date().toISOString().slice(0,7);const type=document.getElementById(`ssIncType_${staffId}`).value;const raw=Number(document.getElementById(`ssIncAmount_${staffId}`).value);const reason=document.getElementById(`ssIncReason_${staffId}`).value.trim();if(!raw||raw<=0){toast('금액 입력','error');return;}const amount=type==='add'?raw:-raw;if(!STATE.incentiveAdjustments)STATE.incentiveAdjustments=[];STATE.incentiveAdjustments.push({id:generateId(),staffId,month,amount,reason,date:new Date().toISOString()});saveIncentiveAdjustments();document.getElementById(`ssIncAmount_${staffId}`).value='';document.getElementById(`ssIncReason_${staffId}`).value='';renderStaffSalesIncentive();renderStaffSalesTable();toast('적용됨');}
+function addSSInc(staffId){const month=document.getElementById('ssAdjMonth')?.value||new Date().toISOString().slice(0,7);const type=document.getElementById(`ssIncType_${staffId}`).value;const raw=Number(document.getElementById(`ssIncAmount_${staffId}`).value);const reason=document.getElementById(`ssIncReason_${staffId}`).value.trim();if(!raw||raw<=0){toast('금액 입력','error');return;}const amount=type==='add'?raw:-raw;if(!STATE.incentiveAdjustments)STATE.incentiveAdjustments=[];STATE.incentiveAdjustments.push({id:generateId(),staffId,month,amount,reason,date:new Date().toISOString()});saveIncentiveAdjustments();document.getElementById(`ssIncAmount_${staffId}`).value='';document.getElementById(`ssIncReason_${staffId}`).value='';renderStaffSalesIncentive();renderStaffSalesTable();toast('적용됨');}
 function removeSSInc(adjId){if(!confirm('삭제?'))return;STATE.incentiveAdjustments=(STATE.incentiveAdjustments||[]).filter(a=>a.id!==adjId);saveIncentiveAdjustments();renderStaffSalesIncentive();renderStaffSalesTable();toast('삭제됨');}
-function downloadStaffReport(){const month=document.getElementById('salesMonth').value;const staffId=document.getElementById('salesStaff').value;let orders=STATE.orders.filter(o=>o.date&&o.date.startsWith(month)&&o.status!=='취소');if(staffId)orders=orders.filter(o=>o.staffId===staffId);const rows=[['직원','일시','상품','구성','매출','순수마진','인센티브']];orders.forEach(o=>{const s=STATE.staff.find(s=>s.id===o.staffId);const comp=(o.items||[]).map(it=>`${parseOption(it.optionFull||'').name}×${it.qty}`).join('/');rows.push([s?s.name:'',o.date,o.productName,comp,o.totalPrice,o.totalMargin,o.incentiveTotal||0]);});const ws=XLSX.utils.aoa_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'매출');XLSX.writeFile(wb,`직원매출_${month}.xlsx`);}
+function downloadStaffReport(){const staffId=document.getElementById('salesStaff')?.value||'';const orders=ordersInRange(_salesPeriod.start,_salesPeriod.end,staffId);const rows=[['직원','일시','상품','구성','매출','순수마진','인센티브']];orders.forEach(o=>{const s=STATE.staff.find(s=>s.id===o.staffId);const comp=(o.items||[]).map(it=>`${parseOption(it.optionFull||'').name}×${it.qty}`).join('/');rows.push([s?s.name:'',o.date,o.productName,comp,o.totalPrice,o.totalMargin,o.incentiveTotal||0]);});const ws=XLSX.utils.aoa_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'매출');XLSX.writeFile(wb,`직원매출_${_salesPeriod.start}_${_salesPeriod.end}.xlsx`);}
 
 /* 상품 관리 */
 function renderProductMgmt(c){c.innerHTML=`<div class="card"><h2>상품 관리</h2><div class="filter-bar"><button class="btn btn-primary btn-sm" onclick="openProductModal()">+ 추가</button><input type="text" id="prodSearch" placeholder="검색" oninput="renderProductTable()" style="flex:1"></div><div id="productTableWrap"></div></div>`;renderProductTable();}
@@ -411,10 +620,72 @@ function renderMyOrders(c){const myOrders=STATE.orders.filter(o=>o.staffId===cur
 function staffCancelOrder(id){if(!confirm('취소?'))return;const o=STATE.orders.find(x=>x.id===id);if(o&&o.status==='미발주'){o.status='취소';saveOrders();renderMyOrders(document.getElementById('mainContainer'));toast('취소됨')}}
 function staffCopyOrder(id){const o=STATE.orders.find(x=>x.id===id);if(!o)return;openOrderModal(o.productId,o.items&&o.items.length?o.items:null);}
 
-/* 내 매출 */
-function renderMySales(c){const months=[];for(let i=0;i<12;i++){const d=new Date();d.setMonth(d.getMonth()-i);months.push(d.toISOString().slice(0,7));}c.innerHTML=`<div class="card"><h2>📊 내 매출</h2><div class="filter-bar"><select id="mySalesMonth" onchange="renderMySalesContent()">${months.map(m=>`<option value="${m}">${m.replace('-','년 ')}월</option>`).join('')}</select></div><div id="mySalesContent"></div></div>`;renderMySalesContent();}
-function renderMySalesContent(){const month=document.getElementById('mySalesMonth')?.value||new Date().toISOString().slice(0,7);const myOrders=STATE.orders.filter(o=>o.staffId===currentUser.id&&o.status!=='취소'&&o.date&&o.date.startsWith(month));const totSales=myOrders.reduce((s,o)=>s+o.totalPrice,0);const totMargin=myOrders.reduce((s,o)=>s+o.totalMargin,0);const orderInc=myOrders.reduce((s,o)=>s+(o.incentiveTotal||0),0);const adjustments=(STATE.incentiveAdjustments||[]).filter(a=>a.staffId===currentUser.id&&a.month===month);const adjustTotal=adjustments.reduce((sum,a)=>sum+a.amount,0);const totInc=orderInc+adjustTotal;const grandTotal=totMargin+totInc;const byProduct={};myOrders.forEach(o=>{if(!byProduct[o.productId])byProduct[o.productId]={name:o.productName,sales:0,margin:0,incentive:0,qty:0,count:0};const b=byProduct[o.productId];b.sales+=o.totalPrice;b.margin+=o.totalMargin;b.incentive+=(o.incentiveTotal||0);b.qty+=(o.items||[]).reduce((a,it)=>a+it.qty,0);b.count++;});const prodList=Object.values(byProduct).sort((a,b)=>(b.margin+b.incentive)-(a.margin+a.incentive));const el=document.getElementById('mySalesContent');if(!el)return;
-el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px"><div class="stat-card"><div class="stat-value" style="font-size:18px">${myOrders.length}건</div><div class="stat-label">주문수</div></div><div class="stat-card"><div class="stat-value" style="font-size:18px;color:var(--primary)">${formatNum(totSales)}원</div><div class="stat-label">매출</div></div><div class="stat-card"><div class="stat-value" style="font-size:18px;color:var(--success)">${formatNum(totMargin)}원</div><div class="stat-label">순수마진</div></div><div class="stat-card" style="border:2px solid #7c3aed"><div class="stat-value" style="font-size:18px;color:#7c3aed">${formatNum(totInc)}원</div><div class="stat-label">인센티브</div></div></div><div style="background:linear-gradient(135deg,#f0fdf4,#f8f4ff);border:2px solid var(--success);border-radius:14px;padding:16px;margin-bottom:16px;text-align:center"><div style="font-size:13px;color:var(--text-light)">💰 총마진</div><div style="font-size:28px;font-weight:800;color:var(--success);margin-top:4px">${formatNum(grandTotal)}원</div><div style="font-size:12px;color:var(--text-light);margin-top:4px">순수마진 ${formatNum(totMargin)} + 인센 ${formatNum(totInc)}</div></div>${adjustments.length?`<div style="background:#f8f4ff;border:1px solid #c4b5fd;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px">💜 인센 조정내역<div style="margin-top:6px;font-size:11px;color:var(--text-light)">${adjustments.map(a=>`${a.date?formatDate(a.date):''}: ${a.amount>0?'+':''}${formatNum(a.amount)}원${a.reason?' ('+a.reason+')':''}`).join('<br>')}</div></div>`:''}${prodList.length?`<div class="card" style="padding:16px"><h2 style="font-size:15px;margin-bottom:12px">📦 상품별</h2>${prodList.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)"><div><div style="font-weight:700;font-size:14px">${p.name}</div><div style="font-size:12px;color:var(--text-light)">${p.count}건 · ${p.qty}개</div></div><div style="text-align:right"><div style="font-size:15px;font-weight:700;color:var(--success)">+${formatNum(p.margin+p.incentive)}원</div></div></div>`).join('')}</div>`:''}<div class="card" style="padding:16px"><h2 style="font-size:15px;margin-bottom:12px">🧾 상세내역</h2>${[...myOrders].reverse().map(o=>`<div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><div style="flex:1"><div style="font-weight:700;font-size:13px">${o.productName}</div><div style="font-size:11px;color:var(--text-light)">${o.recipient} · ${formatDate(o.date)}</div></div><div style="text-align:right"><div style="font-size:14px;font-weight:700;color:var(--success)">+${formatNum(o.totalMargin+(o.incentiveTotal||0))}원</div></div></div>`).join('')}</div>`;}
+/* ===== 내 매출 (직원) - 기간조회 추가 ===== */
+let _mySalesPeriod={mode:'month',start:'',end:'',monthVal:''};
+function renderMySales(c){
+  if(!_mySalesPeriod.monthVal)_mySalesPeriod.monthVal=new Date().toISOString().slice(0,7);
+  if(!_mySalesPeriod.start){const r=getMonthRange(_mySalesPeriod.monthVal);_mySalesPeriod.start=r.start;_mySalesPeriod.end=r.end;}
+  c.innerHTML=`<div class="card"><h2>📊 내 매출</h2>
+    <div class="period-tabs">
+      <div class="period-tab ${_mySalesPeriod.mode==='day'?'active':''}" onclick="setMyPeriod('day')">일별</div>
+      <div class="period-tab ${_mySalesPeriod.mode==='week'?'active':''}" onclick="setMyPeriod('week')">주별</div>
+      <div class="period-tab ${_mySalesPeriod.mode==='month'?'active':''}" onclick="setMyPeriod('month')">월별</div>
+      <div class="period-tab ${_mySalesPeriod.mode==='range'?'active':''}" onclick="setMyPeriod('range')">기간</div>
+    </div>
+    <div id="myPeriodControls"></div>
+    <div id="mySalesContent"></div>
+  </div>
+  <div class="card"><h2>💳 내 정산 기록</h2><div id="mySettlementList"></div></div>`;
+  renderMyPeriodControls();renderMySalesContent();renderMySettlementList();
+}
+function setMyPeriod(mode){
+  _mySalesPeriod.mode=mode;const today=todayStr();
+  if(mode==='day'){_mySalesPeriod.start=today;_mySalesPeriod.end=today;}
+  else if(mode==='week'){const r=getWeekRange(today);_mySalesPeriod.start=r.start;_mySalesPeriod.end=r.end;}
+  else if(mode==='month'){_mySalesPeriod.monthVal=new Date().toISOString().slice(0,7);const r=getMonthRange(_mySalesPeriod.monthVal);_mySalesPeriod.start=r.start;_mySalesPeriod.end=r.end;}
+  else if(mode==='range'){if(!_mySalesPeriod.start)_mySalesPeriod.start=addDays(today,-7);if(!_mySalesPeriod.end)_mySalesPeriod.end=today;}
+  renderMyPeriodControls();renderMySalesContent();
+}
+function renderMyPeriodControls(){
+  const el=document.getElementById('myPeriodControls');if(!el)return;
+  const m=_mySalesPeriod.mode;
+  if(m==='day'){
+    el.innerHTML=`<div class="filter-bar"><input type="date" id="myDay" value="${_mySalesPeriod.start}" onchange="myApplyDay(this.value)"><button class="btn btn-outline btn-sm" onclick="myShiftDay(-1)">←</button><button class="btn btn-outline btn-sm" onclick="myShiftDay(1)">→</button><button class="btn btn-outline btn-sm" onclick="myApplyDay('${todayStr()}')">오늘</button></div>`;
+  }else if(m==='week'){
+    el.innerHTML=`<div class="filter-bar"><input type="date" id="myWeek" value="${_mySalesPeriod.start}" onchange="myApplyWeek(this.value)"><button class="btn btn-outline btn-sm" onclick="myShiftWeek(-1)">←</button><button class="btn btn-outline btn-sm" onclick="myShiftWeek(1)">→</button><button class="btn btn-outline btn-sm" onclick="myApplyWeek('${todayStr()}')">이번주</button><span style="font-size:12px;color:var(--text-light);align-self:center">${_mySalesPeriod.start} ~ ${_mySalesPeriod.end}</span></div>`;
+  }else if(m==='month'){
+    const ms=[];for(let i=0;i<12;i++){const d=new Date();d.setMonth(d.getMonth()-i);ms.push(d.toISOString().slice(0,7));}
+    el.innerHTML=`<div class="filter-bar"><select id="myMonth" onchange="myApplyMonth(this.value)">${ms.map(x=>`<option value="${x}" ${x===_mySalesPeriod.monthVal?'selected':''}>${x}</option>`).join('')}</select></div>`;
+  }else{
+    el.innerHTML=`<div class="filter-bar"><input type="date" id="myStart" value="${_mySalesPeriod.start}" onchange="_mySalesPeriod.start=this.value;renderMySalesContent()"> ~ <input type="date" id="myEnd" value="${_mySalesPeriod.end}" onchange="_mySalesPeriod.end=this.value;renderMySalesContent()"></div>`;
+  }
+}
+function myApplyDay(d){_mySalesPeriod.start=d;_mySalesPeriod.end=d;renderMyPeriodControls();renderMySalesContent();}
+function myShiftDay(diff){_mySalesPeriod.start=addDays(_mySalesPeriod.start,diff);_mySalesPeriod.end=_mySalesPeriod.start;renderMyPeriodControls();renderMySalesContent();}
+function myApplyWeek(d){const r=getWeekRange(d);_mySalesPeriod.start=r.start;_mySalesPeriod.end=r.end;renderMyPeriodControls();renderMySalesContent();}
+function myShiftWeek(diff){_mySalesPeriod.start=addDays(_mySalesPeriod.start,diff*7);_mySalesPeriod.end=addDays(_mySalesPeriod.end,diff*7);renderMyPeriodControls();renderMySalesContent();}
+function myApplyMonth(m){_mySalesPeriod.monthVal=m;const r=getMonthRange(m);_mySalesPeriod.start=r.start;_mySalesPeriod.end=r.end;renderMyPeriodControls();renderMySalesContent();}
+function renderMySalesContent(){
+  const myOrders=ordersInRange(_mySalesPeriod.start,_mySalesPeriod.end,currentUser.id);
+  const totSales=myOrders.reduce((s,o)=>s+o.totalPrice,0);
+  const totMargin=myOrders.reduce((s,o)=>s+o.totalMargin,0);
+  const orderInc=myOrders.reduce((s,o)=>s+(o.incentiveTotal||0),0);
+  const adjustments=adjustmentsInRange(_mySalesPeriod.start,_mySalesPeriod.end,currentUser.id);
+  const adjustTotal=adjustments.reduce((sum,a)=>sum+a.amount,0);
+  const totInc=orderInc+adjustTotal;
+  const grandTotal=totMargin+totInc;
+  const byProduct={};
+  myOrders.forEach(o=>{if(!byProduct[o.productId])byProduct[o.productId]={name:o.productName,sales:0,margin:0,incentive:0,qty:0,count:0};const b=byProduct[o.productId];b.sales+=o.totalPrice;b.margin+=o.totalMargin;b.incentive+=(o.incentiveTotal||0);b.qty+=(o.items||[]).reduce((a,it)=>a+it.qty,0);b.count++;});
+  const prodList=Object.values(byProduct).sort((a,b)=>(b.margin+b.incentive)-(a.margin+a.incentive));
+  const el=document.getElementById('mySalesContent');if(!el)return;
+  el.innerHTML=`<div style="font-size:13px;color:var(--text-light);margin-bottom:10px">📅 <strong>${_mySalesPeriod.start} ~ ${_mySalesPeriod.end}</strong></div><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px"><div class="stat-card"><div class="stat-value" style="font-size:18px">${myOrders.length}건</div><div class="stat-label">주문수</div></div><div class="stat-card"><div class="stat-value" style="font-size:18px;color:var(--primary)">${formatNum(totSales)}원</div><div class="stat-label">매출</div></div><div class="stat-card"><div class="stat-value" style="font-size:18px;color:var(--success)">${formatNum(totMargin)}원</div><div class="stat-label">순수마진</div></div><div class="stat-card" style="border:2px solid #7c3aed"><div class="stat-value" style="font-size:18px;color:#7c3aed">${formatNum(totInc)}원</div><div class="stat-label">인센티브</div></div></div><div style="background:linear-gradient(135deg,#f0fdf4,#f8f4ff);border:2px solid var(--success);border-radius:14px;padding:16px;margin-bottom:16px;text-align:center"><div style="font-size:13px;color:var(--text-light)">💰 총마진</div><div style="font-size:28px;font-weight:800;color:var(--success);margin-top:4px">${formatNum(grandTotal)}원</div><div style="font-size:12px;color:var(--text-light);margin-top:4px">순수마진 ${formatNum(totMargin)} + 인센 ${formatNum(totInc)}</div></div>${adjustments.length?`<div style="background:#f8f4ff;border:1px solid #c4b5fd;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px">💜 인센 조정내역<div style="margin-top:6px;font-size:11px;color:var(--text-light)">${adjustments.map(a=>`${a.date?formatDate(a.date):''}: ${a.amount>0?'+':''}${formatNum(a.amount)}원${a.reason?' ('+a.reason+')':''}`).join('<br>')}</div></div>`:''}${prodList.length?`<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px"><h3 style="font-size:15px;margin-bottom:12px">📦 상품별</h3>${prodList.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)"><div><div style="font-weight:700;font-size:14px">${p.name}</div><div style="font-size:12px;color:var(--text-light)">${p.count}건 · ${p.qty}개</div></div><div style="text-align:right"><div style="font-size:15px;font-weight:700;color:var(--success)">+${formatNum(p.margin+p.incentive)}원</div></div></div>`).join('')}</div>`:''}<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px"><h3 style="font-size:15px;margin-bottom:12px">🧾 상세내역</h3>${myOrders.length?[...myOrders].reverse().map(o=>`<div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><div style="flex:1"><div style="font-weight:700;font-size:13px">${o.productName}</div><div style="font-size:11px;color:var(--text-light)">${o.recipient} · ${formatDate(o.date)}</div></div><div style="text-align:right"><div style="font-size:14px;font-weight:700;color:var(--success)">+${formatNum(o.totalMargin+(o.incentiveTotal||0))}원</div></div></div>`).join(''):'<p style="text-align:center;color:var(--text-light);padding:14px">내역 없음</p>'}</div>`;
+}
+function renderMySettlementList(){
+  const el=document.getElementById('mySettlementList');if(!el)return;
+  const list=(STATE.settlements||[]).filter(s=>s.staffId===currentUser.id).slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  if(!list.length){el.innerHTML='<p style="text-align:center;color:var(--text-light);padding:14px">정산 기록 없음</p>';return;}
+  el.innerHTML=list.map(s=>`<div class="settle-card ${s.paid?'paid':''}"><div class="s-head"><div><div class="s-title">${s.start} ~ ${s.end} <span style="font-size:11px;font-weight:500;color:var(--text-light)">${s.paid?'✅ 지급완료':'⏳ 대기'}</span></div><div class="s-detail">${s.orderCount}건${s.memo?' · '+s.memo:''}</div></div><div class="s-amount">${formatNum(s.totalAmount)}원</div></div><div class="s-detail">매출 ${formatNum(s.sales)} · 마진 ${formatNum(s.margin)} · 인센 ${formatNum(s.incentive)} · 조정 ${s.adjustment>=0?'+':''}${formatNum(s.adjustment)}<br>생성: ${s.createdAt?formatDate(s.createdAt):''}${s.paidAt?` · 지급: ${formatDate(s.paidAt)}`:''}</div></div>`).join('');
+}
 
 /* ===== 대량주문 (AI 기반) ===== */
 let ocrEntries=[];
@@ -443,7 +714,6 @@ async function processOCRImage(file){
 function parseTextInput(){const text=document.getElementById('ocrTextInput')?.value?.trim();if(!text){toast('텍스트 입력','error');return;}const blocks=text.split(/\n{2,}/);let cnt=0;blocks.forEach(block=>{if(block.trim().length<3)return;const parsed=parseOrderInfoLocal(block.trim());ocrEntries.push({rawText:block.trim(),...parsed});cnt++;});document.getElementById('ocrTextInput').value='';renderOCRList();toast(`${cnt}건 파싱`);}
 function fileToBase64(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});}
 
-/* ===== Gemini Vision API ===== */
 async function callGeminiVision(base64Data){
   if(!GEMINI_API_KEY){throw new Error('Gemini API 키를 설정해주세요 (관리자 > 직원관리 > AI 설정)');}
   const imageData=base64Data.replace(/^data:image\/(png|jpeg|jpg|webp|gif);base64,/,'');
@@ -501,7 +771,6 @@ async function callGeminiVision(base64Data){
   throw new Error('AI가 정보를 추출하지 못했습니다');
 }
 
-/* 텍스트 직접 입력용 로컬 파싱 */
 function parseOrderInfoLocal(text){
   const rawLines=text.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
   let name='',phone='',address='',addressDetail='',zipcode='';
@@ -525,7 +794,6 @@ function parseOrderInfoLocal(text){
   return{name,phone,address,addressDetail,zipcode};
 }
 
-/* OCR 결과 렌더링 */
 function renderOCRList(){const el=document.getElementById('ocrParsedList');if(!el)return;const validCount=ocrEntries.filter(e=>e.name&&e.phone&&e.address).length;const btn=document.getElementById('bulkSubmitBtn');if(btn){btn.disabled=validCount===0;btn.textContent=`일괄 주문 (${validCount}건)`;}
 el.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap"><button class="btn btn-sm btn-warning" onclick="bulkAutoVerifyAll()">🔍 전체 주소확인</button><span style="font-size:12px;color:var(--text-light);align-self:center">우편번호 자동 입력 (카카오 주소검색)</span></div>`+ocrEntries.map((entry,i)=>{const isValid=entry.name&&entry.phone&&entry.address;const hasZip=!!entry.zipcode;return`<div class="ocr-parsed-card ${isValid?(hasZip?'is-valid':'has-error'):'has-error'}"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:700">#${i+1} ${entry.name||'이름없음'} ${hasZip?'<span style="color:var(--success);font-size:11px">✓확인</span>':'<span style="color:var(--warning);font-size:11px">⚠주소확인필요</span>'}</span><button class="btn btn-sm btn-danger" onclick="ocrEntries.splice(${i},1);renderOCRList()">삭제</button></div><div class="ocr-raw-text">${entry.rawText}</div><div class="ocr-field"><label>이름</label><input value="${entry.name}" onchange="ocrEntries[${i}].name=this.value;renderOCRList()"></div><div class="ocr-field"><label>연락처</label><input value="${entry.phone}" oninput="this.value=formatPhoneNumber(this.value);ocrEntries[${i}].phone=this.value;renderOCRList()"></div><div class="ocr-field"><label>우편번호</label><input value="${entry.zipcode||''}" style="width:100px" readonly><button class="btn btn-sm btn-primary" onclick="ocrAutoVerify(${i})">🔍 자동확인</button><button class="btn btn-sm btn-outline" onclick="ocrManualSearch(${i})">수동검색</button></div><div class="ocr-field"><label>주소</label><input value="${entry.address}" onchange="ocrEntries[${i}].address=this.value"></div><div class="ocr-field"><label>상세</label><input value="${entry.addressDetail||''}" onchange="ocrEntries[${i}].addressDetail=this.value"></div></div>`;}).join('');}
 
@@ -545,7 +813,7 @@ async function init(){
   await loadState();
   const geminiSnap=await db.ref('state/geminiApiKey').once('value');if(geminiSnap.val()){GEMINI_API_KEY=geminiSnap.val();localStorage.setItem('gemini_api_key',GEMINI_API_KEY);}
   populateStaffSelect();handleModeChange();tryAutoLogin();
-  db.ref('state').on('value',snap=>{const data=snap.val();if(data){STATE={...STATE,...data};if(!STATE.approvals)STATE.approvals=[];if(!STATE.recipients)STATE.recipients=[];if(!STATE.incentiveAdjustments)STATE.incentiveAdjustments=[];STATE.products=(STATE.products||[]).map(p=>({incentive:0,fixedSetPrice:false,setQty:1,...p}));if(data.geminiApiKey)GEMINI_API_KEY=data.geminiApiKey;updateApprovalCount();}});
+  db.ref('state').on('value',snap=>{const data=snap.val();if(data){STATE={...STATE,...data};if(!STATE.approvals)STATE.approvals=[];if(!STATE.recipients)STATE.recipients=[];if(!STATE.incentiveAdjustments)STATE.incentiveAdjustments=[];if(!STATE.settlements)STATE.settlements=[];STATE.products=(STATE.products||[]).map(p=>({incentive:0,fixedSetPrice:false,setQty:1,...p}));if(data.geminiApiKey)GEMINI_API_KEY=data.geminiApiKey;updateApprovalCount();}});
 }
 init();
 </script>
